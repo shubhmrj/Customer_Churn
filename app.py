@@ -1,28 +1,27 @@
 import streamlit as st
 import numpy as np
 import tensorflow as tf
+import keras
 from sklearn.preprocessing import StandardScaler, LabelEncoder, OneHotEncoder
 import pandas as pd
 import pickle
 
-# ── Compatibility patch for TF 2.15 / Keras 2.15 ──────────────────────────────
-# Keras 2.15 changed InputLayer's config schema; this patch lets it load
-# models saved with the old batch_shape / optional keys.
-from keras.layers import InputLayer as _InputLayer
-_orig_from_config = _InputLayer.from_config.__func__
-
-@classmethod
-def _patched_from_config(cls, config):
-    config.pop('optional', None)
-    if 'batch_shape' in config:
-        config['batch_input_shape'] = config.pop('batch_shape')
-    return _orig_from_config(cls, config)
-
-_InputLayer.from_config = _patched_from_config
-# ──────────────────────────────────────────────────────────────────────────────
+# ── Compatibility fix: handles models saved with older Keras/TF ───────────────
+class CompatInputLayer(keras.layers.InputLayer):
+    @classmethod
+    def from_config(cls, config):
+        config = config.copy()
+        config.pop('optional', None)
+        if 'batch_shape' in config:
+            config['batch_input_shape'] = config.pop('batch_shape')
+        return super().from_config(config)
+# ─────────────────────────────────────────────────────────────────────────────
 
 # Load the trained model
-model = tf.keras.models.load_model('Models/model.h5')
+model = tf.keras.models.load_model(
+    'Models/model.h5',
+    custom_objects={'InputLayer': CompatInputLayer}
+)
 
 # Load the encoders and scaler
 with open('Models/label_encoder_gender.pkl', 'rb') as file:
@@ -34,11 +33,9 @@ with open('Models/onehot_encoder_geo.pkl', 'rb') as file:
 with open('Models/scaler.pkl', 'rb') as file:
     scaler = pickle.load(file)
 
-
 ## Streamlit app
 st.title('Customer Churn Prediction')
 
-# User input
 geography = st.selectbox('Geography', onehot_encoder_geo.categories_[0])
 gender = st.selectbox('Gender', label_encoder_gender.classes_)
 age = st.slider('Age', 18, 92)
@@ -50,7 +47,6 @@ num_of_products = st.slider('Number of Products', 1, 4)
 has_cr_card = st.selectbox('Has Credit Card', [0, 1])
 is_active_member = st.selectbox('Is Active Member', [0, 1])
 
-# Prepare the input data
 input_data = pd.DataFrame({
     'CreditScore': [credit_score],
     'Gender': [label_encoder_gender.transform([gender])[0]],
@@ -63,17 +59,12 @@ input_data = pd.DataFrame({
     'EstimatedSalary': [estimated_salary]
 })
 
-# One-hot encode 'Geography'
 geo_encoded = onehot_encoder_geo.transform([[geography]]).toarray()
 geo_encoded_df = pd.DataFrame(geo_encoded, columns=onehot_encoder_geo.get_feature_names_out(['Geography']))
-
-# Combine one-hot encoded columns with input data
 input_data = pd.concat([input_data.reset_index(drop=True), geo_encoded_df], axis=1)
 
-# Scale the input data
 input_data_scaled = scaler.transform(input_data)
 
-# Predict churn
 prediction = model.predict(input_data_scaled)
 prediction_proba = prediction[0][0]
 
