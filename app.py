@@ -3,19 +3,22 @@ import streamlit as st
 import numpy as np
 import tensorflow as tf
 import keras
+import keras.layers as _kl
 from sklearn.preprocessing import StandardScaler, LabelEncoder, OneHotEncoder
 import pandas as pd
 import pickle
 
-# ── Compatibility fix: handles models saved with older Keras/TF ───────────────
-class CompatInputLayer(keras.layers.InputLayer):
-    @classmethod
-    def from_config(cls, config):
-        config = config.copy()
-        config.pop('optional', None)
-        if 'batch_shape' in config:
-            config['batch_input_shape'] = config.pop('batch_shape')
-        return super().from_config(config)
+# ── Monkey-patch InputLayer before any model loading ─────────────────────────
+_orig_from_config = _kl.InputLayer.from_config.__func__
+
+def _fixed_from_config(cls, config):
+    config = dict(config)
+    config.pop('optional', None)
+    if 'batch_shape' in config:
+        config['batch_input_shape'] = config.pop('batch_shape')
+    return _orig_from_config(cls, config)
+
+_kl.InputLayer.from_config = classmethod(_fixed_from_config)
 # ─────────────────────────────────────────────────────────────────────────────
 
 # Build absolute paths relative to this script's location
@@ -23,8 +26,7 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 # Load the trained model
 model = tf.keras.models.load_model(
-    os.path.join(BASE_DIR, 'Models', 'model.h5'),
-    custom_objects={'InputLayer': CompatInputLayer}
+    os.path.join(BASE_DIR, 'Models', 'model.h5')
 )
 
 # Load the encoders and scaler
@@ -36,7 +38,6 @@ with open(os.path.join(BASE_DIR, 'Models', 'onehot_encoder_geo.pkl'), 'rb') as f
 
 with open(os.path.join(BASE_DIR, 'Models', 'scaler.pkl'), 'rb') as file:
     scaler = pickle.load(file)
-
 
 ## Streamlit app
 st.title('Customer Churn Prediction')
@@ -73,10 +74,8 @@ geo_encoded_df = pd.DataFrame(
     columns=onehot_encoder_geo.get_feature_names_out(['Geography'])
 )
 
-# Combine one-hot encoded columns with input data
+# Combine and scale
 input_data = pd.concat([input_data.reset_index(drop=True), geo_encoded_df], axis=1)
-
-# Scale the input data
 input_data_scaled = scaler.transform(input_data)
 
 # Predict churn
@@ -89,6 +88,3 @@ if prediction_proba > 0.5:
     st.write('The customer is likely to churn.')
 else:
     st.write('The customer is not likely to churn.')
-    
-    
-    
