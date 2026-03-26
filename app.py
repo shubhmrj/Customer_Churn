@@ -1,26 +1,45 @@
+import os
 import streamlit as st
 import numpy as np
 import tensorflow as tf
+import keras
 from sklearn.preprocessing import StandardScaler, LabelEncoder, OneHotEncoder
 import pandas as pd
 import pickle
 
+# ── Compatibility fix: handles models saved with older Keras/TF ───────────────
+class CompatInputLayer(keras.layers.InputLayer):
+    @classmethod
+    def from_config(cls, config):
+        config = config.copy()
+        config.pop('optional', None)
+        if 'batch_shape' in config:
+            config['batch_input_shape'] = config.pop('batch_shape')
+        return super().from_config(config)
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Build absolute paths relative to this script's location
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
 # Load the trained model
-model = tf.keras.models.load_model('model.h5')
+model = tf.keras.models.load_model(
+    os.path.join(BASE_DIR, 'Models', 'model.h5'),
+    custom_objects={'InputLayer': CompatInputLayer}
+)
 
 # Load the encoders and scaler
-with open('label_encoder_gender.pkl', 'rb') as file:
+with open(os.path.join(BASE_DIR, 'Models', 'label_encoder_gender.pkl'), 'rb') as file:
     label_encoder_gender = pickle.load(file)
 
-with open('onehot_encoder_geo.pkl', 'rb') as file:
+with open(os.path.join(BASE_DIR, 'Models', 'onehot_encoder_geo.pkl'), 'rb') as file:
     onehot_encoder_geo = pickle.load(file)
 
-with open('scaler.pkl', 'rb') as file:
+with open(os.path.join(BASE_DIR, 'Models', 'scaler.pkl'), 'rb') as file:
     scaler = pickle.load(file)
 
 
-## streamlit app
-st.title('Customer Churn PRediction')
+## Streamlit app
+st.title('Customer Churn Prediction')
 
 # User input
 geography = st.selectbox('Geography', onehot_encoder_geo.categories_[0])
@@ -49,14 +68,16 @@ input_data = pd.DataFrame({
 
 # One-hot encode 'Geography'
 geo_encoded = onehot_encoder_geo.transform([[geography]]).toarray()
-geo_encoded_df = pd.DataFrame(geo_encoded, columns=onehot_encoder_geo.get_feature_names_out(['Geography']))
+geo_encoded_df = pd.DataFrame(
+    geo_encoded,
+    columns=onehot_encoder_geo.get_feature_names_out(['Geography'])
+)
 
 # Combine one-hot encoded columns with input data
 input_data = pd.concat([input_data.reset_index(drop=True), geo_encoded_df], axis=1)
 
 # Scale the input data
 input_data_scaled = scaler.transform(input_data)
-
 
 # Predict churn
 prediction = model.predict(input_data_scaled)
@@ -68,3 +89,6 @@ if prediction_proba > 0.5:
     st.write('The customer is likely to churn.')
 else:
     st.write('The customer is not likely to churn.')
+    
+    
+    
