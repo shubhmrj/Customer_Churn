@@ -5,6 +5,22 @@ from sklearn.preprocessing import StandardScaler, LabelEncoder, OneHotEncoder
 import pandas as pd
 import pickle
 
+# ── Compatibility patch for TF 2.15 / Keras 2.15 ──────────────────────────────
+# Keras 2.15 changed InputLayer's config schema; this patch lets it load
+# models saved with the old batch_shape / optional keys.
+from keras.layers import InputLayer as _InputLayer
+_orig_from_config = _InputLayer.from_config.__func__
+
+@classmethod
+def _patched_from_config(cls, config):
+    config.pop('optional', None)
+    if 'batch_shape' in config:
+        config['batch_input_shape'] = config.pop('batch_shape')
+    return _orig_from_config(cls, config)
+
+_InputLayer.from_config = _patched_from_config
+# ──────────────────────────────────────────────────────────────────────────────
+
 # Load the trained model
 model = tf.keras.models.load_model('Models/model.h5')
 
@@ -19,8 +35,8 @@ with open('Models/scaler.pkl', 'rb') as file:
     scaler = pickle.load(file)
 
 
-## streamlit app
-st.title('Customer Churn PRediction')
+## Streamlit app
+st.title('Customer Churn Prediction')
 
 # User input
 geography = st.selectbox('Geography', onehot_encoder_geo.categories_[0])
@@ -56,7 +72,6 @@ input_data = pd.concat([input_data.reset_index(drop=True), geo_encoded_df], axis
 
 # Scale the input data
 input_data_scaled = scaler.transform(input_data)
-
 
 # Predict churn
 prediction = model.predict(input_data_scaled)
