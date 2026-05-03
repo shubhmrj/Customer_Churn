@@ -4,19 +4,41 @@ import tensorflow as tf
 from sklearn.preprocessing import StandardScaler, LabelEncoder, OneHotEncoder
 import pandas as pd
 import pickle
+import os
 
-# Load the trained model
-model = tf.keras.models.load_model('model.h5')
+# Load the trained model with error handling
+MODEL_DIR = 'Models'
+try:
+    # Try .keras format first (newer), then .h5 (legacy)
+    keras_path = os.path.join(MODEL_DIR, 'model.keras')
+    h5_path = os.path.join(MODEL_DIR, 'model.h5')
+    
+    if os.path.exists(keras_path):
+        model = tf.keras.models.load_model(keras_path)
+    elif os.path.exists(h5_path):
+        model = tf.keras.models.load_model(h5_path)
+    else:
+        st.error(f"Model not found in {MODEL_DIR}/ folder")
+        st.stop()
+except Exception as e:
+    st.error(f"Error loading model: {e}")
+    st.error(f"TensorFlow version: {tf.__version__}")
+    st.error("Please ensure model file is compatible with this TF version")
+    st.stop()
 
-# Load the encoders and scaler
-with open('label_encoder_gender.pkl', 'rb') as file:
-    label_encoder_gender = pickle.load(file)
+# Load the encoders and scaler with error handling
+try:
+    with open(os.path.join(MODEL_DIR, 'label_encoder_gender.pkl'), 'rb') as file:
+        label_encoder_gender = pickle.load(file)
 
-with open('onehot_encoder_geo.pkl', 'rb') as file:
-    onehot_encoder_geo = pickle.load(file)
+    with open(os.path.join(MODEL_DIR, 'onehot_encoder_geo.pkl'), 'rb') as file:
+        onehot_encoder_geo = pickle.load(file)
 
-with open('scaler.pkl', 'rb') as file:
-    scaler = pickle.load(file)
+    with open(os.path.join(MODEL_DIR, 'scaler.pkl'), 'rb') as file:
+        scaler = pickle.load(file)
+except Exception as e:
+    st.error(f"Error loading preprocessing files from {MODEL_DIR}/: {e}")
+    st.stop()
 
 
 ## streamlit app
